@@ -942,8 +942,10 @@ applyModelData();
 /* ============ IDIOMA ============ */
 var LANG='es';
 /* P4 (v72): versión visible, diagnóstico y registro de versiones dentro de la app. */
-var APP_VERSION='v87';
+var APP_VERSION='v89';
 var VERLOG=[
+ {v:'v89',es:'Copia de seguridad como Diario de Hábitos: ahora copia TODOS tus datos (no solo las paletas); la app guarda sola una copia cada 7 días en 3 ranuras rotatorias (aparte de tus datos) que puedes restaurar; avisa «hace X días de tu última copia» dentro del panel; y puedes Generar, Copiar, Descargar .json o Importar (archivo o pegado).',en:'Backup like the Habits diary: now copies ALL your data (not just palettes); the app auto-saves a backup every 7 days in 3 rotating slots (apart from your data) that you can restore; it warns “X days since your last backup” inside the panel; and you can Generate, Copy, Download .json or Import (file or pasted).'},
+ {v:'v88',es:'Nube: al resolver un conflicto, tus paletas de los dos dispositivos ahora se COMBINAN (no se pierde ninguna); solo eliges qué versión del resto —progreso, ajustes— se queda. Antes, elegir un lado descartaba las paletas del otro.',en:'Cloud: when resolving a conflict, your palettes from both devices are now COMBINED (none is lost); you only choose which version of the rest — progress, settings — is kept. Before, picking a side discarded the other side’s palettes.'},
  {v:'v87',es:'Protección de datos: si al abrir la app no se pueden leer tus datos guardados, el guardado se pausa para NO escribir un vacío encima de lo bueno, y aparece un aviso con «Reintentar» o «Empezar de cero». (Antes, un fallo de lectura al arrancar podía perder paletas y progreso al primer guardado.)',en:'Data protection: if your saved data cannot be read when the app opens, saving is paused so it will NOT overwrite good data with an empty one, and a notice offers “Retry” or “Start fresh”. (Before, a read failure at startup could lose palettes and progress on the first save.)'},
  {v:'v86',es:'Herramientas reordenadas (Degradado · Malla · Recolorear · Conversor · Contraste). El Contraste WCAG ahora se pliega con una flecha para no ocupar tanto. Copia de seguridad y Nube pasan a lo ancho, debajo, con el mismo formato que Diario de Hábitos (copia plegable y una etiqueta sobre la nube).',en:'Tools reordered (Gradient · Mesh · Recolour · Converter · Contrast). WCAG Contrast now folds behind an arrow so it takes less space. Backup and Cloud move full-width below, in the same layout as the Habits diary (collapsible backup and a label above the cloud).'},
  {v:'v85',es:'Nube: sincroniza tus paletas, progreso del estudio y ajustes entre el móvil y el PC, con la misma cuenta que Diario de Hábitos. Tarjeta «Nube» en Herramientas; ante un choque de versiones te deja elegir, nunca pisa datos en silencio, y guarda una copia antes de la primera fusión.',en:'Cloud: sync your palettes, study progress and settings between phone and PC, with the same account as the Habits diary. “Cloud” card in Tools; on a version clash it lets you choose, never overwrites silently, and saves a backup before the first merge.'},
@@ -4482,10 +4484,11 @@ function renderTools(){
  var cv='<div class="toolcard"><h3>'+T('cvH')+'</h3><p class="hint">'+T('cvHint')+'</p><p class="okhint" style="margin:0 0 10px">'+T('okGloss')+'</p>'
   +'<div class="pickrow" style="margin-bottom:10px"><input type="text" style="flex:1;width:auto;min-width:200px" placeholder="'+T('cvPh')+'" value="'+esc(cvVal)+'" oninput="cvUpdate(this.value)"></div>'
   +'<div id="cvOut">'+cvOutHtml()+'</div></div>';
- var bk='<details class="pex pexbig"><summary>💾 '+T('bkH')+'</summary><div class="pexbody"><p class="hint">'+T('bkNote')+'</p><div class="imgrow" style="border-top:none;padding-top:0;margin:8px 0 0"><button class="btn" onclick="exportData()">'+T('bkExp')+'</button><label class="filelbl">'+T('bkImp')+'<input type="file" accept=".json,application/json" style="display:none" onchange="importData(this)"></label></div></div></details>';
+ var bk='<details class="pex pexbig" id="bkFold"><summary>💾 '+T('bkH')+'</summary><div class="pexbody"><div id="backupWarn"></div><div id="backupBox"></div></div></details>';
  $('#toolsView').innerHTML='<p class="sub" style="margin:0 auto 18px">'+T('toolsSub')+'</p><div class="toolgrid">'+gr+mg+rc+cv+ct+'</div><div class="toolstack">'+bk+'<span class="cloud-eyebrow">'+(LANG==='es'?'Nube · sincronizar entre dispositivos':'Cloud · sync across devices')+'</span><div class="toolcard" id="cloudCard"></div></div>';
  mgPaint(); /* el lienzo solo existe despues de escribir el innerHTML */
  try{ if(typeof renderCloud==='function') renderCloud(); }catch(e){} /* v85: rellena la tarjeta de nube */
+ try{ if(typeof bkRefresh==='function') bkRefresh(); }catch(e){} /* v89: copia de seguridad (aviso + auto-copias) */
 }
 
 /* ============ MODELO / PESTAÑAS / IDIOMA ============ */
@@ -5299,22 +5302,44 @@ modelBarVisible('wheel');
       +'<p class="hint">'+CL('Este dispositivo cambió el','This device changed on')+' '+cloudWhen(CLOUD.meta.lastLocalChange)+'.<br>'
       +CL('La nube cambió el','The cloud changed on')+' '+cloudWhen(remote.updated_ms)+'.<br>'
       +CL('No elijo por ti. Si quieres, exporta antes una copia con «Copia de seguridad», arriba.','I will not choose for you. If you want, export a backup first with “Backup”, above.')+'</p>'
+      +'<p class="cbnote" style="margin:0 0 8px">'+CL('Tus paletas de los dos lados se combinan siempre (no se pierde ninguna); eliges solo qué versión del resto (progreso, ajustes) se queda.','Palettes from both sides are always combined (none is lost); you only choose which version of the rest — progress, settings — is kept.')+'</p>'
       +'<div class="opt">'
       +'<button onclick="cloudResolve(this)" data-which="push">'+CL('Mandar lo de este dispositivo','Send this device’s version')+'</button>'
       +'<button onclick="cloudResolve(this)" data-which="pull">'+CL('Traer lo de la nube','Bring the cloud version')+'</button>'
       +'</div></div>';
   }
+  /* v88: unión de paletas por firma (nombre+colores / nombre+hex). Nunca pierde una:
+     concatena y deduplica. Local primero, luego las nuevas del otro lado. */
+  function unionPalettes(a, b){
+    a = a || {}; b = b || {};
+    function uni(a1, a2, sig){ var out=[], seen={}; (a1||[]).concat(a2||[]).forEach(function(x){ var s=sig(x); if(!seen[s]){ seen[s]=1; out.push(x); } }); return out; }
+    var sigP=function(p){ return (p&&p.name||'')+'|'+((p&&p.cols||[]).join(',')); };
+    var sigB=function(x){ return (x&&x.name||'')+'|'+(x&&x.hex||''); };
+    return { list: uni(a.list, b.list, sigP), basket: uni(a.basket, b.basket, sigB) };
+  }
   function cloudResolve(btnOrWhich){
     var which = (btnOrWhich && btnOrWhich.dataset) ? btnOrWhich.dataset.which : btnOrWhich;
     var msg = which==='push'
-      ? CL('La versión de la nube se reemplazará por la de este dispositivo. ¿Seguro?','The cloud version will be replaced by this device’s. Are you sure?')
-      : CL('Los datos de este dispositivo se reemplazarán por los de la nube. ¿Seguro?','This device’s data will be replaced by the cloud’s. Are you sure?');
+      ? CL('El resto de datos (progreso, ajustes) se queda con la versión de ESTE dispositivo; tus paletas de ambos lados se combinan. ¿Seguro?','The rest (progress, settings) keeps THIS device’s version; palettes from both sides are combined. Continue?')
+      : CL('El resto de datos (progreso, ajustes) se queda con la versión de la NUBE; tus paletas de ambos lados se combinan. ¿Seguro?','The rest (progress, settings) keeps the CLOUD’s version; palettes from both sides are combined. Continue?');
     try{ if(!confirm(msg)) return; }catch(e){}
+    var PAL='color_wheel_palettes_v1';
     var previo = CLOUD.meta.lastRemoteUpdatedAt;
-    var p;
-    if(which==='push'){ CLOUD.meta.lastRemoteUpdatedAt=0; p=cloudSync({force:'push'}); }
-    else { p = cloudFetchRemote().then(function(remote){ if(remote) return cloudPull(remote); }); }
-    p.then(function(){
+    Promise.all([cloudGetState(), cloudFetchRemote()]).then(function(res){
+      var localState=res[0], remote=res[1];
+      var remoteData = (remote && remote.data) ? remote.data : {v:1, keys:{}};
+      var lPal=(localState.keys||{})[PAL], rPal=(remoteData.keys||{})[PAL];
+      var merged = (which==='pull') ? JSON.parse(JSON.stringify(remoteData)) : JSON.parse(JSON.stringify(localState));
+      merged.keys = merged.keys || {};
+      merged.keys[PAL] = unionPalettes(lPal, rPal);   /* paletas: SIEMPRE unión */
+      return cloudSetState(merged).then(function(){    /* aplica en local */
+        var now=new Date().toISOString();
+        return cloudApi('/rest/v1/app_state', {method:'POST',
+          headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+          body:[{user_id:CLOUD.session.user_id, app_id:CLOUD_CFG.appId, data:merged, updated_at:now}]})
+          .then(function(){ CLOUD.meta.lastSyncedAt=Date.now(); CLOUD.meta.lastRemoteUpdatedAt=Date.parse(now); return cloudSaveMeta(); });
+      });
+    }).then(function(){ return cloudRerender(); }).then(function(){
       var slot=document.getElementById('conflictSlot'); if(slot) slot.innerHTML='';
       CLOUD.status='ok'; renderCloud();
     }).catch(function(e){
@@ -5357,10 +5382,186 @@ modelBarVisible('wheel');
   window.cloudResolve=cloudResolve; window.cloudTogglePass=cloudTogglePass;
   window.cloudShowConflict=cloudShowConflict; window.cloudDecide=cloudDecide;
   window.cloudGetState=cloudGetState; window.cloudSetState=cloudSetState;
+  window.unionPalettes=unionPalettes;
   window.CLOUD=CLOUD; window.CLOUD_CFG=CLOUD_CFG; window.CLOUD_SYNC_KEYS=SYNC_KEYS;
 
   /* arranque de la nube: tras dejar que las cargas iniciales se asienten */
   setTimeout(cloudInit, 500);
+})();
+</script>
+<style>
+/* v89: copia de seguridad como Diario de Hábitos */
+#backupBox .bkbtns{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0;align-items:center}
+#backupBox .bkarea{width:100%;min-height:96px;margin-top:10px;background:var(--surface2);border:1px solid var(--line2);border-radius:12px;color:var(--txt);font-family:var(--mono);font-size:12px;padding:10px;resize:vertical}
+#backupBox .bkmsg{font-size:12px}
+#backupBox .bkmsg.ok{color:#3FB265}#backupBox .bkmsg.err{color:#E5484D}
+#backupBox .bkconfirm{font-size:12px;color:#E5484D;font-weight:600}
+#backupBox .mini{min-height:34px;border-radius:10px;border:1px solid var(--line2);background:var(--surface2);color:var(--txt);padding:6px 12px;font-weight:600;font-size:.82rem;cursor:pointer}
+#backupBox .mini.red{background:rgba(229,72,77,.16);border-color:#E5484D}
+.autobk{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.autobk .abk-h{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-family:var(--disp);font-weight:600;margin-bottom:6px}
+.autobk .abrow{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)}
+.autobk .abd{font-family:var(--mono);font-size:12px;color:var(--txt)}
+.autobk .abl{font-size:12px;color:var(--muted);flex:1}
+.bkwarn{display:flex;align-items:center;gap:10px;background:rgba(240,180,80,.12);border:1px solid rgba(240,180,80,.5);border-radius:12px;padding:10px 12px;margin-bottom:12px;font-size:.85rem}
+.bkwarn .bw{flex:1;color:var(--txt)}
+.bkwarn .bkx{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:2px 6px;min-height:auto}
+</style>
+<script>
+/* ============================================================================
+   COPIA DE SEGURIDAD (v89) — portada de Diario de Hábitos y adaptada a las 7
+   claves de la Rueda. Copia de TODOS los datos; auto-copias semanales en 3
+   claves rotatorias (aparte de tus datos); aviso «hace X días»; restauración.
+   ========================================================================== */
+(function(){
+  'use strict';
+  var DATA_KEYS=['color_wheel_palettes_v1','color_wheel_v1','color_wheel_theme_v1','color_wheel_keys_v1','color_wheel_palpref_v1','color_wheel_gridpref_v1','color_wheel_lut_v1'];
+  var AUTO_KEYS=['color_wheel_backup_1','color_wheel_backup_2','color_wheel_backup_3'];
+  var AUTO_DIAS=7, BACKUP_DIAS=7, BK_META='color_wheel_backup_meta_v1';
+  var AUTO_META=[], bkConfirm=false, bkPending=null, meta={lastBackup:null,dismissed:null};
+
+  function BL(es,en){ try{ return (typeof LANG!=='undefined'&&LANG==='en')?en:es; }catch(e){ return es; } }
+  function isoDay(d){ return (d||new Date()).toISOString().slice(0,10); }
+  function daysSince(iso){ if(!iso) return null; var a=new Date(iso+'T00:00:00'), b=new Date(isoDay()+'T00:00:00'); return Math.round((b-a)/86400000); }
+  function fmtDMY(iso){ if(!iso) return ''; var p=String(iso).split('-'); return p.length===3?(p[2]+'/'+p[1]+'/'+p[0]):iso; }
+  function sget(k){ return window.storage.get(k).then(function(r){ return r&&r.value?r.value:null; }); }
+  function sset(k,v){ return window.storage.set(k,v); }
+  function readMeta(){ return sget(BK_META).then(function(v){ if(v){ try{ meta=JSON.parse(v)||meta; }catch(e){} } return meta; }); }
+  function writeMeta(){ return sset(BK_META, JSON.stringify(meta)); }
+  function bkArea(){ return document.getElementById('bkArea'); }
+  function bkMsg(t,okk){ var m=document.getElementById('bkMsg'); if(!m) return; m.textContent=t; m.className='bkmsg '+(okk?'ok':'err'); setTimeout(function(){ if(m) m.textContent=''; },4000); }
+
+  function snapshot(){
+    return Promise.all(DATA_KEYS.map(function(k){ return sget(k).then(function(raw){ var v=null; if(raw!=null){ try{ v=JSON.parse(raw); }catch(e){ v=raw; } } return [k,v]; }); }))
+      .then(function(pairs){ var keys={}; pairs.forEach(function(p){ keys[p[0]]=p[1]; }); return {app:'rueda-color', version:(typeof APP_VERSION!=='undefined'?APP_VERSION:''), fecha:isoDay(), keys:keys}; });
+  }
+  function hasData(){
+    return Promise.all([sget('color_wheel_palettes_v1'), sget('color_wheel_v1')]).then(function(r){
+      var pal=null, st=null; try{ pal=JSON.parse(r[0]||'null'); }catch(e){} try{ st=JSON.parse(r[1]||'null'); }catch(e){}
+      var nPal=pal&&((pal.list&&pal.list.length)||(pal.basket&&pal.basket.length));
+      var nStudy=st&&st.box&&Object.keys(st.box).length;
+      return !!(nPal||nStudy);
+    });
+  }
+  function scanAuto(){
+    AUTO_META=[];
+    return Promise.all(AUTO_KEYS.map(function(k){ return sget(k).then(function(v){ if(v){ try{ var o=JSON.parse(v); if(o&&o.fecha&&o.keys) AUTO_META.push({key:k,fecha:o.fecha}); }catch(e){} } }); }))
+      .then(function(){ AUTO_META.sort(function(a,b){ return b.fecha.localeCompare(a.fecha); }); });
+  }
+  function maybeAutoBackup(){
+    if(typeof STORE_READY!=='undefined' && !STORE_READY) return Promise.resolve();
+    if(typeof STORE_READ_BAD!=='undefined' && STORE_READ_BAD) return Promise.resolve();
+    return scanAuto().then(hasData).then(function(has){
+      if(!has) return;
+      var newest=AUTO_META.length?AUTO_META[0].fecha:null;
+      if(newest!==null && daysSince(newest)<AUTO_DIAS) return;
+      var empty=AUTO_KEYS.filter(function(k){ return !AUTO_META.some(function(m){ return m.key===k; }); })[0];
+      var slot=empty || AUTO_META[AUTO_META.length-1].key;   /* recicla la más antigua */
+      return snapshot().then(function(snap){ snap.auto=true; return sset(slot, JSON.stringify(snap)); }).then(scanAuto);
+    }).catch(function(){});
+  }
+  function downloadJson(name, text){
+    try{ var b=new Blob([text],{type:'application/json'}); var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ try{ URL.revokeObjectURL(u); }catch(e){} },1500); return true; }catch(e){ return false; }
+  }
+  function doExport(){
+    return snapshot().then(function(snap){
+      var ta=bkArea(); if(ta) ta.value=JSON.stringify(snap,null,1);
+      meta.lastBackup=isoDay(); meta.dismissed=null;
+      return writeMeta().then(function(){ renderBackupWarn(); bkMsg(BL('copia generada ✓ · cópiala y guárdala','backup generated ✓ · copy and save it'),true); });
+    });
+  }
+  function reloadRepaint(){
+    var ps=[];
+    ['loadStore','loadPal','loadPalPref','loadGridPref','loadLutPref','loadKeys','loadTheme'].forEach(function(fn){ try{ if(typeof window[fn]==='function') ps.push(Promise.resolve(window[fn]()).catch(function(){})); }catch(e){} });
+    return Promise.all(ps).then(function(){
+      try{ if(typeof applyTheme==='function') applyTheme(); }catch(e){}
+      try{ var on=document.querySelector('#tabs .tab.on'), t=on?on.dataset.tab:''; var map={harm:'renderHarm',pal:'renderPal',grid:'renderGrid',theory:'renderTheory',tools:'renderTools',study:'renderStudyHome'}; if(t==='wheel'){ if(typeof updateModelUI==='function') updateModelUI(); if(typeof mountWheel==='function') mountWheel(); } else if(map[t]&&typeof window[map[t]]==='function') window[map[t]](); }catch(e){}
+    });
+  }
+  function applySnapshot(o){
+    var writes=[];
+    if(o.keys){ DATA_KEYS.forEach(function(k){ if(o.keys[k]!=null){ var s; try{ s=(typeof o.keys[k]==='string')?o.keys[k]:JSON.stringify(o.keys[k]); }catch(e){ return; } writes.push(sset(k,s)); } }); }
+    else { /* formato antiguo (v20): palettes/study/theme */
+      if(o.palettes) writes.push(sset('color_wheel_palettes_v1', JSON.stringify(o.palettes)));
+      if(o.study)    writes.push(sset('color_wheel_v1', JSON.stringify(o.study)));
+      if(o.theme)    writes.push(sset('color_wheel_theme_v1', JSON.stringify(o.theme)));
+    }
+    return Promise.all(writes).then(reloadRepaint);
+  }
+
+  window.bkExport=function(){ doExport(); };
+  window.bkCopy=function(){
+    var go=(bkArea()&&bkArea().value)?Promise.resolve():doExport();
+    go.then(function(){
+      var ta=bkArea(); if(!ta) return;
+      try{
+        if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value);
+        else { ta.select(); if(document.execCommand) document.execCommand('copy'); }
+        bkMsg(BL('copiado ✓','copied ✓'),true);
+      }catch(e){ bkMsg(BL('no se pudo copiar; selecciónalo y cópialo a mano','could not copy; select and copy manually'),false); }
+    });
+  };
+  window.bkDownload=function(){
+    var go=(bkArea()&&bkArea().value)?Promise.resolve():doExport();
+    go.then(function(){ var okD=downloadJson('rueda-color_copia_'+isoDay()+'.json', bkArea().value); bkMsg(okD?BL('descarga lanzada ✓','download started ✓'):BL('descarga bloqueada aquí: usa Copiar','download blocked here: use Copy'), okD); });
+  };
+  window.bkPickFile=function(){ var f=document.getElementById('bkFile'); if(f) f.click(); };
+  window.bkFromFile=function(input){ var f=input.files&&input.files[0]; if(!f) return; var rd=new FileReader(); rd.onload=function(){ var ta=bkArea(); if(ta) ta.value=rd.result; bkConfirm=false; window.bkImport(false); input.value=''; }; rd.readAsText(f); };
+  window.bkImport=function(confirmed){
+    if(confirmed){
+      if(!bkPending){ bkMsg(BL('no hay nada que importar','nothing to import'),false); return; }
+      var pend=bkPending;
+      applySnapshot(pend).then(function(){ bkPending=null; bkConfirm=false; renderBackup(); renderBackupWarn(); bkMsg(BL('datos importados ✓','data imported ✓'),true); });
+      return;
+    }
+    var ta=bkArea(); if(!ta||!ta.value){ bkMsg(BL('no hay nada que importar','nothing to import'),false); return; }
+    var o=null; try{ o=JSON.parse(ta.value); }catch(e){ bkMsg(BL('el texto no es un JSON válido','not valid JSON'),false); return; }
+    if(!o||o.app!=='rueda-color'){ bkMsg(BL('esto no es una copia de la Rueda de Color','not a Colour Wheel backup'),false); return; }
+    bkPending=o; bkConfirm=true; renderBackup();   /* guarda lo pendiente: el re-render vacía el textarea */
+  };
+  window.bkCancel=function(){ bkConfirm=false; bkPending=null; renderBackup(); };
+  window.autoRestore=function(key){ sget(key).then(function(v){ if(!v){ bkMsg(BL('no se pudo leer esa copia','could not read that backup'),false); return; } var ta=bkArea(); if(ta) ta.value=v; window.bkImport(false); }); };
+  window.bkSnooze=function(){ meta.dismissed=isoDay(); writeMeta().then(renderBackupWarn); };
+
+  function renderBackup(){
+    var el=document.getElementById('backupBox'); if(!el) return;
+    var auto = AUTO_META.length
+      ? AUTO_META.map(function(m){ return '<div class="abrow"><span class="abd">'+fmtDMY(m.fecha)+'</span><span class="abl">'+BL('guardada sola','auto-saved')+'</span><button class="mini" onclick="autoRestore(\''+m.key+'\')">'+BL('Restaurar','Restore')+'</button></div>'; }).join('')
+      : '<div class="hint" style="margin-top:6px">'+BL('Aún no hay ninguna. La app guarda una copia sola cada '+AUTO_DIAS+' días y conserva las 3 últimas, aparte de tus datos.','None yet. The app auto-saves a backup every '+AUTO_DIAS+' days and keeps the last 3, apart from your data.')+'</div>';
+    el.innerHTML=''
+      +'<div class="hint">'+BL('Genera un JSON con TODOS tus datos (paletas, progreso del estudio, tema y ajustes) y guárdalo fuera de la app. Para restaurar, elige el archivo .json (o pega su contenido) y pulsa Importar.','Generate a JSON with ALL your data (palettes, study progress, theme and settings) and keep it outside the app. To restore, pick the .json file (or paste its content) and press Import.')+'</div>'
+      +'<div class="bkbtns">'
+        +'<button class="btn" onclick="bkExport()">'+BL('Generar copia','Generate backup')+'</button>'
+        +'<button class="btn" onclick="bkCopy()">'+BL('Copiar','Copy')+'</button>'
+        +'<button class="btn" onclick="bkDownload()">'+BL('Descargar .json','Download .json')+'</button>'
+        +(bkConfirm
+          ? '<span class="bkconfirm">'+BL('¿Seguro? Reemplaza TODOS los datos actuales','Sure? This replaces ALL current data')+'</span><button class="mini red" onclick="bkImport(true)">'+BL('Sí, importar','Yes, import')+'</button><button class="mini" onclick="bkCancel()">'+BL('No','No')+'</button>'
+          : '<button class="btn" onclick="bkPickFile()">'+BL('Importar archivo…','Import file…')+'</button><button class="btn" onclick="bkImport(false)">'+BL('Importar lo pegado','Import pasted')+'</button>')
+        +'<span class="bkmsg" id="bkMsg"></span>'
+        +'<input type="file" id="bkFile" accept=".json,application/json" style="display:none" onchange="bkFromFile(this)">'
+      +'</div>'
+      +'<textarea id="bkArea" class="bkarea" spellcheck="false" placeholder="'+BL('Aquí aparece tu copia, o pega una para importarla','Your backup appears here, or paste one to import')+'"></textarea>'
+      +'<div class="autobk"><div class="abk-h">'+BL('Copias automáticas','Automatic backups')+'</div>'+auto+'</div>';
+  }
+  function renderBackupWarn(){
+    var el=document.getElementById('backupWarn'); if(!el) return;
+    hasData().then(function(has){
+      var since=daysSince(meta.lastBackup);
+      var need=has && (since===null || since>=BACKUP_DIAS);
+      if(!need || meta.dismissed===isoDay()){ el.innerHTML=''; return; }
+      var txt = (since===null)
+        ? BL('Nunca has hecho una copia de seguridad.','You have never made a backup.')
+        : BL('Hace '+since+' días de tu última copia.','It has been '+since+' days since your last backup.');
+      el.innerHTML='<div class="bkwarn" role="status"><span>💾</span><span class="bw">'+txt+' '+BL('Genera una y guárdala en un archivo.','Generate one and save it to a file.')+'</span><button class="btn small" onclick="bkExport()">'+BL('Hacer copia','Back up')+'</button><button class="bkx" title="'+BL('Ahora no','Not now')+'" onclick="bkSnooze()">✕</button></div>';
+    });
+  }
+  window.renderBackup=renderBackup;
+  window.renderBackupWarn=renderBackupWarn;
+  window.bkAuto=maybeAutoBackup;   /* para pruebas / disparo manual */
+  window.bkRefresh=function(){ scanAuto().then(function(){ renderBackup(); renderBackupWarn(); }); };
+
+  /* arranque: cargar meta, hacer la auto-copia si toca, y refrescar la vista */
+  setTimeout(function(){ readMeta().then(maybeAutoBackup).then(function(){ try{ if(document.getElementById('backupBox')) window.bkRefresh(); else renderBackupWarn(); }catch(e){} }).catch(function(){}); }, 260);
 })();
 </script>
 </html>
